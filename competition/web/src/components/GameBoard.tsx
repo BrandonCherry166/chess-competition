@@ -27,13 +27,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     customSquareStyles[to] = { backgroundColor: 'rgba(255, 255, 0, 0.5)' };
   }
 
-  // Determine if pieces should be draggable (only during human's turn)
-  const isHumanTurn = gameState.status === 'waiting-human';
+  // Determine if pieces should be draggable (human side and it's their turn)
+  const currentPlayer = gameState.currentTurn === 'w'
+    ? gameState.whitePlayer
+    : gameState.blackPlayer;
+  const isHumanTurn = currentPlayer?.type === 'human'
+    && gameState.status !== 'finished';
   const humanColor = isHumanTurn ? gameState.currentTurn : null;
 
   const isDraggablePiece = useCallback(
-    ({ piece }: { piece: string; sourceSquare: Square }) => {
+    (pieceOrArgs: string | { piece: string; sourceSquare: Square }, maybeSquare?: Square) => {
       if (!isHumanTurn || !humanColor) return false;
+      const piece = typeof pieceOrArgs === 'string'
+        ? pieceOrArgs
+        : pieceOrArgs.piece;
       // piece format: "wP", "bK", etc.
       const pieceColor = piece[0];
       return pieceColor === humanColor;
