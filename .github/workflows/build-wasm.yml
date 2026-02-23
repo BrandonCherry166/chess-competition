@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -18,12 +18,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: >-
-      ${{
-        github.repository != 'gameguild-gg/chess-competition'
-        || github.event_name == 'schedule'
-        || github.event_name == 'workflow_dispatch'
-      }}
+    if: ${{ github.event_name != 'schedule' || github.repository == 'gameguild-gg/chess-competition' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
