@@ -5,8 +5,12 @@ project(chess CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Competition mode: build only chessbot + chesswasm (no GUI, CLI, SDL, ImGui)
+option(CHESS_COMPETITION "Build only the WASM bot library for competition" OFF)
+set(CHESS_BOT_NAME "chesswasm" CACHE STRING "Output name for the WASM bot module")
+
 # Disable Emscripten's built-in SDL port so our CPM-fetched SDL2 is used
-if(EMSCRIPTEN)
+if(EMSCRIPTEN AND NOT CHESS_COMPETITION)
     add_compile_options(-sUSE_SDL=0)
     add_link_options(-sUSE_SDL=0)
 endif()
@@ -22,7 +26,9 @@ include(cmake/get_cpm.cmake)
 # set flag to compile only the chessvalidator
 option(CHESS_VALIDATOR_ONLY "Compile only the chess validator" OFF)
 
-CPMAddPackage("gh:TheLartians/Format.cmake@1.8.3")
+if(NOT CHESS_COMPETITION)
+    CPMAddPackage("gh:TheLartians/Format.cmake@1.8.3")
+endif()
 
 # add external chess lib to use as a validator for the tools
 CPMAddPackage(
@@ -52,7 +58,7 @@ CPMAddPackage(
 )
 include_directories(${magic_enum_SOURCE_DIR}/include)
 
-IF(NOT CHESS_VALIDATOR_ONLY)
+IF(NOT CHESS_VALIDATOR_ONLY AND NOT CHESS_COMPETITION)
 
     CPMAddPackage(
             NAME SDL2
@@ -139,7 +145,7 @@ IF(NOT CHESS_VALIDATOR_ONLY)
     ENDIF()
     include_directories(${IMGUI_SOURCE_DIR} ${IMGUI_SOURCE_DIR}/backends)
 
-endif() # NOT CHESS_VALIDATOR_ONLY
+endif() # NOT CHESS_VALIDATOR_ONLY AND NOT CHESS_COMPETITION
 
 # chess library
 file(GLOB_RECURSE CHESS_BOT_FILES CONFIGURE_DEPENDS "chess-bot/*.cpp" "chess-bot/*.h")
@@ -147,6 +153,7 @@ add_library(chessbot STATIC ${CHESS_BOT_FILES})
 set_target_properties(chessbot PROPERTIES LINKER_LANGUAGE CXX)
 include_directories(chess-bot)
 
+if(NOT CHESS_COMPETITION)
 # chess cli
 file(GLOB_RECURSE CHESS_CLI_FILES CONFIGURE_DEPENDS "chess-cli/*.cpp" "chess-cli/*.h")
 add_executable(chesscli ${CHESS_CLI_FILES})
@@ -162,35 +169,38 @@ else()
     target_link_libraries(chessgui PUBLIC chessbot IMGUI SDL2::SDL2)
 endif()
 endif() # NOT CHESS_VALIDATOR_ONLY
+endif() # NOT CHESS_COMPETITION
 
 # Emscripten / WebAssembly targets
 if(EMSCRIPTEN)
-    # GUI: build as HTML with ASYNCIFY for the main loop
-    if(NOT CHESS_VALIDATOR_ONLY)
-        set_target_properties(chessgui PROPERTIES SUFFIX ".html")
-        target_link_options(chessgui PRIVATE
-            -sASYNCIFY
-            -sASYNCIFY_STACK_SIZE=65536
-            -sALLOW_MEMORY_GROWTH=1
-            --shell-file ${CMAKE_SOURCE_DIR}/chess-gui/shell.html
-        )
-    endif()
+    if(NOT CHESS_COMPETITION)
+        # GUI: build as HTML with ASYNCIFY for the main loop
+        if(NOT CHESS_VALIDATOR_ONLY)
+            set_target_properties(chessgui PROPERTIES SUFFIX ".html")
+            target_link_options(chessgui PRIVATE
+                -sASYNCIFY
+                -sASYNCIFY_STACK_SIZE=65536
+                -sALLOW_MEMORY_GROWTH=1
+                --shell-file ${CMAKE_SOURCE_DIR}/chess-gui/shell.html
+            )
+        endif()
 
-    # CLI: build as HTML with custom shell (no prompt() for stdin)
-    set_target_properties(chesscli PROPERTIES SUFFIX ".html")
-    target_link_options(chesscli PRIVATE
-        -sALLOW_MEMORY_GROWTH=1
-        -sEXIT_RUNTIME=1
-        -sINVOKE_RUN=0
-        "-sEXPORTED_RUNTIME_METHODS=['callMain']"
-        --shell-file ${CMAKE_SOURCE_DIR}/chess-cli/shell.html
-    )
+        # CLI: build as HTML with custom shell (no prompt() for stdin)
+        set_target_properties(chesscli PROPERTIES SUFFIX ".html")
+        target_link_options(chesscli PRIVATE
+            -sALLOW_MEMORY_GROWTH=1
+            -sEXIT_RUNTIME=1
+            -sINVOKE_RUN=0
+            "-sEXPORTED_RUNTIME_METHODS=['callMain']"
+            --shell-file ${CMAKE_SOURCE_DIR}/chess-cli/shell.html
+        )
+    endif() # NOT CHESS_COMPETITION
 
     # WASM library: expose Move() to JavaScript via Embind
-    add_executable(chesswasm chess-wasm/bindings.cpp)
-    target_link_libraries(chesswasm PUBLIC chessbot)
-    set_target_properties(chesswasm PROPERTIES SUFFIX ".js")
-    target_link_options(chesswasm PRIVATE
+    add_executable(${CHESS_BOT_NAME} chess-wasm/bindings.cpp)
+    target_link_libraries(${CHESS_BOT_NAME} PUBLIC chessbot)
+    set_target_properties(${CHESS_BOT_NAME} PROPERTIES SUFFIX ".js")
+    target_link_options(${CHESS_BOT_NAME} PRIVATE
         -lembind
         -sMODULARIZE=1
         -sEXPORT_ES6=1
@@ -200,9 +210,11 @@ if(EMSCRIPTEN)
     )
 endif()
 
-CPMAddPackage(
-        NAME CPMLicenses.cmake
-        GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
-        VERSION 0.0.5
-)
-write_license_disclaimer("third_party.txt" "${CPM_PACKAGES}")
+if(NOT CHESS_COMPETITION)
+    CPMAddPackage(
+            NAME CPMLicenses.cmake
+            GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
+            VERSION 0.0.5
+    )
+    write_license_disclaimer("third_party.txt" "${CPM_PACKAGES}")
+endif()

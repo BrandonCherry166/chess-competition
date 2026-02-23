@@ -14,3 +14,5 @@ cmake-**/
 
 
 .DS_Store
+
+competition/web/node_modules/
