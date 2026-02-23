@@ -57,6 +57,35 @@ export interface GameState {
   timeLimitMs: number;
 }
 
+export type TournamentStatus = 'idle' | 'running' | 'finished';
+
+export type TournamentMatchStatus = 'pending' | 'running' | 'finished' | 'bye';
+
+export interface TournamentMatch {
+  id: string;
+  roundIndex: number;
+  matchIndex: number;
+  whiteBot: BotInfo | null;
+  blackBot: BotInfo | null;
+  winner: BotInfo | null;
+  loser: BotInfo | null;
+  status: TournamentMatchStatus;
+}
+
+export interface TournamentRound {
+  title: string;
+  matches: TournamentMatch[];
+}
+
+export interface TournamentState {
+  status: TournamentStatus;
+  rounds: TournamentRound[];
+  currentMatchId: string | null;
+  champion: BotInfo | null;
+  runnerUp: BotInfo | null;
+  thirdPlace: BotInfo | null;
+}
+
 // Messages from main thread -> worker
 export type WorkerInMessage =
   | { type: 'load'; botUrl: string }
