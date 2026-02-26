@@ -3,30 +3,10 @@
 // https://github.com/Disservin/chess-library
 #include "chess.hpp"
 #include <random>
+
+constexpr int INF = 1e9;
+constexpr int MATE = 9000;
 using namespace ChessSimulator;
-
-std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
-  // create your board based on the board string following the FEN notation
-  // search for the best move using minimax / monte carlo tree search /
-  // alpha-beta pruning / ... try to use nice heuristics to speed up the search
-  // and have better results return the best move in UCI notation you will gain
-  // extra points if you create your own board/move representation instead of
-  // using the one provided by the library
-
-  // here goes a random movement
-  chess::Board board(fen);
-  chess::Movelist moves;
-  chess::movegen::legalmoves(moves, board);
-  if(moves.size() == 0)
-    return "";
-
-  // get random move
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dist(0, moves.size() - 1);
-  auto move = moves[dist(gen)];
-  return chess::uci::moveToUci(move);
-}
 
 int PIECE_VALUES[6] = {
   100, //Pawn
@@ -133,29 +113,31 @@ inline int pstIndex(chess::Square sq, chess::Color color)
 
 inline const int* pstForPiece(chess::PieceType pt)
 {
-  switch (pt)
+  if (pt == chess::PieceType::PAWN)
   {
-  case chess::PieceType::PAWN:
     return PAWN_PST;
-
-  case chess::PieceType::KNIGHT:
-    return KNIGHT_PST;
-
-  case chess::PieceType::BISHOP:
-    return BISHOP_PST;
-
-  case chess::PieceType::ROOK:
-    return ROOK_PST;
-
-  case chess::PieceType::QUEEN:
-    return QUEEN_PST;
-
-  case chess::PieceType::KING:
-    return KING_MIDDLEGAME_PST;
-
-  default:
-    return nullptr;
   }
+  else if (pt == chess::PieceType::KNIGHT)
+  {
+    return KNIGHT_PST;
+  }
+  else if (pt == chess::PieceType::BISHOP)
+  {
+    return BISHOP_PST;
+  }
+  else if (pt == chess::PieceType::ROOK)
+  {
+    return ROOK_PST;
+  }
+  else if (pt == chess::PieceType::QUEEN)
+  {
+    return QUEEN_PST;
+  }
+  else if (pt == chess::PieceType::KING)
+  {
+    return KING_MIDDLEGAME_PST;
+  }
+
 }
 
 static int Evaluate(chess::Board& board) {
@@ -189,4 +171,74 @@ static int Evaluate(chess::Board& board) {
 
   return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
+
+int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Using negamax, which is an alternate form of minmax that works better with my eval function
+{
+  chess::Movelist moves;
+  chess::movegen::legalmoves(moves, board);
+
+  if (depth == 0)
+  {
+    return Evaluate(board);
+  }
+
+  if (moves.empty())
+  {
+    return board.inCheck() ? (-MATE - ply) : 0;
+  }
+
+  for (auto move : moves)
+  {
+    board.makeMove(move);
+    int score = -negamax(board, depth - 1, -beta, -alpha, ply + 1);
+    board.unmakeMove(move);
+
+    if (score >= beta)
+    {
+      return beta;
+    }
+
+    if (score > alpha)
+    {
+      alpha = score;
+    }
+  }
+  return alpha;
+}
+
+
+std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
+  // create your board based on the board string following the FEN notation
+  // search for the best move using minimax / monte carlo tree search /
+  // alpha-beta pruning / ... try to use nice heuristics to speed up the search
+  // and have better results return the best move in UCI notation you will gain
+  // extra points if you create your own board/move representation instead of
+  // using the one provided by the library
+
+  // here goes a random movement
+  chess::Board board(fen);
+  chess::Movelist moves;
+  chess::movegen::legalmoves(moves, board);
+  if(moves.size() == 0)
+    return "";
+
+  chess::Move bestMove = moves[0];
+  int bestScore = -INF;
+
+  for (auto& move: moves)
+  {
+    board.makeMove(move);
+    int score = -negamax(board, 3, -INF, INF, 1);
+    board.unmakeMove(move);
+
+    if (score > bestScore)
+    {
+      bestScore = score;
+      bestMove = move;
+    }
+  }
+
+  return chess::uci::moveToUci(bestMove);
+}
+
 
