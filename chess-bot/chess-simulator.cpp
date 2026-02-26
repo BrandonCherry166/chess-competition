@@ -3,6 +3,10 @@
 // https://github.com/Disservin/chess-library
 #include "chess.hpp"
 #include <random>
+#include <chrono>
+#include <fstream>
+
+//std::vector<std::string> gameMoves;
 
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
@@ -137,6 +141,17 @@ inline const int* pstForPiece(chess::PieceType pt)
 
 }
 
+int moveScore(chess::Board& board, const chess::Move& move) { //MVV / LVA
+  if (board.at(move.to()) == chess::Piece::NONE) {
+    return 0; //No Capture
+  }
+
+  int victim = PIECE_VALUES[(int)board.at(move.to()).type().internal()];
+  int attacker = PIECE_VALUES[(int)board.at(move.from()).type().internal()];
+
+  return victim - attacker;
+}
+
 static int Evaluate(chess::Board& board) {
   int score = 0;
 
@@ -183,6 +198,11 @@ int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Usin
     return board.inCheck() ? -(MATE - ply) : 0;
   }
 
+  //Move Ordering
+  std::sort(moves.begin(), moves.end(), [&](const chess::Move a, const chess::Move& b) {
+    return moveScore(board, a) > moveScore(board, b);
+  });
+
   for (auto move : moves)
   {
     board.makeMove(move);
@@ -211,7 +231,6 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   // extra points if you create your own board/move representation instead of
   // using the one provided by the library
 
-  // here goes a random movement
   chess::Board board(fen);
   chess::Movelist moves;
   chess::movegen::legalmoves(moves, board);
@@ -219,22 +238,44 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   if(moves.size() == 0)
     return "";
 
+  auto start = std::chrono::steady_clock::now();
+  auto elapsed = [&]() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+  };
+
   chess::Move bestMove = moves[0];
-  int bestScore = -INF;
+  for (int depth = 1; depth <= 64; depth++) {
+    chess::Move depthBest = moves[0];
+    int bestScore = -INF;
 
-  for (auto& move: moves)
-  {
-    board.makeMove(move);
-    int score = -negamax(board, 3, -INF, INF, 1);
-    board.unmakeMove(move);
-
-    if (score > bestScore)
+    for (auto& move: moves)
     {
-      bestScore = score;
-      bestMove = move;
+      board.makeMove(move);
+      int score = -negamax(board, depth - 1, -INF, INF, 1);
+      board.unmakeMove(move);
+
+      if (score > bestScore)
+      {
+        bestScore = score;
+        depthBest = move;
+      }
+
+      if (elapsed() > timeLimitMs * 0.8) goto done;
     }
+    bestMove = depthBest;
   }
-  return chess::uci::moveToUci(bestMove);
+  done:
+  std::string result = chess::uci::moveToUci(bestMove);
+ // gameMoves.push_back(result);
+
+  //Write PGN
+  //std::ofstream pgn("game.pgn");
+  //for (int i = 0; i < gameMoves.size(); i++) {
+   // if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
+   // pgn << gameMoves[i] << " ";
+  //}
+  //pgn.close();
+  return result;
 }
 
 
