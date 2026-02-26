@@ -107,7 +107,7 @@ inline int pstIndex(chess::Square sq, chess::Color color)
   }
   else
   {
-    return 8 + rank * file; //Rank 1 row first
+    return rank * 8 + file; //Rank 1 row first
   }
 }
 
@@ -159,7 +159,7 @@ static int Evaluate(chess::Board& board) {
 
     if (table)
     {
-      pst = table[pstIndex(sq, color)];
+      pst = table[pstIndex(square, color)];
     }
 
     int pieceScore = material + pst;
