@@ -117,5 +117,6 @@ int KING_ENDGAME_PST[64] = {
 };
 
 static int Evaluation(chess::Board& board) {
+  int score = 0;
 
 }
