@@ -113,29 +113,26 @@ inline int pstIndex(chess::Square sq, chess::Color color)
 
 inline const int* pstForPiece(chess::PieceType pt)
 {
-  if (pt == chess::PieceType::PAWN)
+  switch (pt.internal())
   {
+  case chess::PieceType::underlying::PAWN:
     return PAWN_PST;
-  }
-  else if (pt == chess::PieceType::KNIGHT)
-  {
+
+  case chess::PieceType::underlying::KNIGHT:
     return KNIGHT_PST;
-  }
-  else if (pt == chess::PieceType::BISHOP)
-  {
+
+  case chess::PieceType::underlying::BISHOP:
     return BISHOP_PST;
-  }
-  else if (pt == chess::PieceType::ROOK)
-  {
+
+  case chess::PieceType::underlying::ROOK:
     return ROOK_PST;
-  }
-  else if (pt == chess::PieceType::QUEEN)
-  {
+
+  case chess::PieceType::underlying::QUEEN:
     return QUEEN_PST;
-  }
-  else if (pt == chess::PieceType::KING)
-  {
+
+  case chess::PieceType::underlying::KING:
     return KING_MIDDLEGAME_PST;
+
   }
 
 }
@@ -168,7 +165,6 @@ static int Evaluate(chess::Board& board) {
     int pieceScore = material + pst;
     score += color == chess::Color::WHITE ? pieceScore : -pieceScore;
   }
-
   return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
 
@@ -184,7 +180,7 @@ int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Usin
 
   if (moves.empty())
   {
-    return board.inCheck() ? (-MATE - ply) : 0;
+    return board.inCheck() ? -(MATE - ply) : 0;
   }
 
   for (auto move : moves)
@@ -219,6 +215,7 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   chess::Board board(fen);
   chess::Movelist moves;
   chess::movegen::legalmoves(moves, board);
+
   if(moves.size() == 0)
     return "";
 
@@ -237,7 +234,6 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
       bestMove = move;
     }
   }
-
   return chess::uci::moveToUci(bestMove);
 }
 
