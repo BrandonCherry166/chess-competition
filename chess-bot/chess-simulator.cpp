@@ -10,6 +10,11 @@
 
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
+
+auto searchDeadline = std::chrono::steady_clock::now();
+static int nodeCount = 0;
+static bool timeUp = false;
+
 using namespace ChessSimulator;
 
 int PIECE_VALUES[6] = {
@@ -185,6 +190,15 @@ static int Evaluate(chess::Board& board) {
 
 int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Using negamax, which is an alternate form of minmax that works better with my eval function
 {
+  if ((nodeCount++ & 1023) == 0) {
+    if (std::chrono::steady_clock::now() >= searchDeadline) {
+      timeUp = true;
+      return 0; //Abort, checked every 1024 nodes to prevent expensive calls
+    }
+  }
+
+  if (timeUp) return 0;
+
   chess::Movelist moves;
   chess::movegen::legalmoves(moves, board);
 
@@ -239,8 +253,13 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
     return "";
 
   auto start = std::chrono::steady_clock::now();
+  searchDeadline = start + std::chrono::milliseconds( (long long) (timeLimitMs * 0.8));
+  nodeCount = 0;
+  timeUp = false;
+
   auto elapsed = [&]() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
   };
 
   chess::Move bestMove = moves[0];
@@ -260,7 +279,7 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
         depthBest = move;
       }
 
-      if (elapsed() > timeLimitMs * 0.8) goto done;
+      if (timeUp || elapsed() > timeLimitMs * 0.8) goto done;
     }
     bestMove = depthBest;
   }
