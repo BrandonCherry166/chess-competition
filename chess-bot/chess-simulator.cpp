@@ -6,7 +6,7 @@
 #include <chrono>
 #include <fstream>
 
-//std::vector<std::string> gameMoves;
+std::vector<std::string> gameMoves;
 
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
@@ -188,6 +188,41 @@ static int Evaluate(chess::Board& board) {
   return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
 
+int quiescence(chess::Board& board, int alpha, int beta) {
+  if (timeUp) return 0;
+
+  int stand_pat = Evaluate(board);
+  if (stand_pat >= beta) {
+    return beta;
+  }
+  if (stand_pat > alpha) {
+    alpha = stand_pat;
+  }
+
+  chess::Movelist captures;
+  chess::movegen::legalmoves<chess::movegen::MoveGenType::CAPTURE>(captures, board);
+
+  std::sort(captures.begin(), captures.end(), [&](const chess::Move& a, const chess::Move& b) {
+    return moveScore(board, a) > moveScore(board, b);
+  });
+
+  for (auto& move : captures) {
+    board.makeMove(move);
+    int score = -quiescence(board, -beta, -alpha);
+    board.unmakeMove(move);
+
+    if (score >= beta) {
+      return beta;
+    }
+
+    if (score > alpha) {
+      alpha = score;
+    }
+  }
+
+  return alpha;
+}
+
 int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Using negamax, which is an alternate form of minmax that works better with my eval function
 {
   if ((nodeCount++ & 1023) == 0) {
@@ -204,7 +239,7 @@ int negamax(chess::Board& board, int depth, int alpha, int beta, int ply) //Usin
 
   if (depth == 0)
   {
-    return Evaluate(board);
+    return quiescence(board, alpha, beta);
   }
 
   if (moves.empty())
@@ -285,15 +320,15 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   }
   done:
   std::string result = chess::uci::moveToUci(bestMove);
- // gameMoves.push_back(result);
+ gameMoves.push_back(result);
 
   //Write PGN
-  //std::ofstream pgn("game.pgn");
-  //for (int i = 0; i < gameMoves.size(); i++) {
-   // if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
-   // pgn << gameMoves[i] << " ";
-  //}
-  //pgn.close();
+  std::ofstream pgn("game.pgn");
+  for (int i = 0; i < gameMoves.size(); i++) {
+    if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
+   pgn << gameMoves[i] << " ";
+  }
+  pgn.close();
   return result;
 }
 
