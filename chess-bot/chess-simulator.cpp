@@ -6,7 +6,7 @@
 #include <chrono>
 #include <fstream>
 
-std::vector<std::string> gameMoves;
+//std::vector<std::string> gameMoves;
 
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
@@ -320,15 +320,15 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   }
   done:
   std::string result = chess::uci::moveToUci(bestMove);
- gameMoves.push_back(result);
+ //gameMoves.push_back(result);
 
   //Write PGN
-  std::ofstream pgn("game.pgn");
-  for (int i = 0; i < gameMoves.size(); i++) {
-    if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
-   pgn << gameMoves[i] << " ";
-  }
-  pgn.close();
+  //std::ofstream pgn("game.pgn");
+  //for (int i = 0; i < gameMoves.size(); i++) {
+   // if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
+   //pgn << gameMoves[i] << " ";
+  //}
+  //pgn.close();
   return result;
 }
 
