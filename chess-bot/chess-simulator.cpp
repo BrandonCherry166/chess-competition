@@ -116,7 +116,77 @@ int KING_ENDGAME_PST[64] = {
   -50,-30,-30,-30,-30,-30,-30,-50
 };
 
-static int Evaluation(chess::Board& board) {
+inline int pstIndex(chess::Square sq, chess::Color color)
+{
+  int file = sq.file();
+  int rank = sq.rank();
+
+  if (color == chess::Color::WHITE)
+  {
+    return (7 - rank) * 8 + file; // Flip
+  }
+  else
+  {
+    return 8 + rank * file; //Rank 1 row first
+  }
+}
+
+inline const int* pstForPiece(chess::PieceType pt)
+{
+  switch (pt)
+  {
+  case chess::PieceType::PAWN:
+    return PAWN_PST;
+
+  case chess::PieceType::KNIGHT:
+    return KNIGHT_PST;
+
+  case chess::PieceType::BISHOP:
+    return BISHOP_PST;
+
+  case chess::PieceType::ROOK:
+    return ROOK_PST;
+
+  case chess::PieceType::QUEEN:
+    return QUEEN_PST;
+
+  case chess::PieceType::KING:
+    return KING_MIDDLEGAME_PST;
+
+  default:
+    return nullptr;
+  }
+}
+
+static int Evaluate(chess::Board& board) {
   int score = 0;
 
+  for (int sq = 0; sq < 64; sq++)
+  {
+    chess::Square square(sq);
+    chess::Piece piece = board.at(square);
+
+    if (piece == chess::Piece::NONE)
+    {
+      continue;
+    }
+
+    chess::PieceType pieceType = piece.type();
+    chess::Color color = piece.color();
+
+    int material = PIECE_VALUES[static_cast<int>(pieceType)];
+    int pst = 0;
+    const int* table = pstForPiece(pieceType);
+
+    if (table)
+    {
+      pst = table[pstIndex(sq, color)];
+    }
+
+    int pieceScore = material + pst;
+    score += color == chess::Color::WHITE ? pieceScore : -pieceScore;
+  }
+
+  return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
+
