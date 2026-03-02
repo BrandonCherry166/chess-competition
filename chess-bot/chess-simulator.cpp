@@ -181,6 +181,10 @@ int evaluatePawnShield(const chess::Board& board, chess::Color side) {
   return score;
 }
 
+int evaluateMobility(const chess::Board& board) {
+  int score = 0;
+  
+}
 
 
 
