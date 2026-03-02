@@ -24,16 +24,12 @@ export type GameStatus =
   | 'finished';
 
 export type GameResult =
-  | 'white-checkmate'
-  | 'black-checkmate'
-  | 'stalemate'
-  | 'draw-repetition'
-  | 'draw-insufficient'
-  | 'draw-50-move'
-  | 'white-forfeit-invalid'
-  | 'black-forfeit-invalid'
-  | 'white-forfeit-timeout'
-  | 'black-forfeit-timeout'
+  | { type: 'checkmate'; winner: 'w' | 'b' }
+  | { type: 'stalemate' }
+  | { type: 'draw-repetition' }
+  | { type: 'draw-insufficient' }
+  | { type: 'draw-50-move' }
+  | { type: 'forfeit'; loser: 'w' | 'b'; reason: 'invalid' | 'timeout' }
   | null;
 
 export interface MoveRecord {
@@ -61,12 +57,30 @@ export type TournamentStatus = 'idle' | 'running' | 'finished';
 
 export type TournamentMatchStatus = 'pending' | 'running' | 'finished' | 'bye';
 
+export type GameWinReason = 
+  | 'checkmate'
+  | 'stalemate'
+  | 'timeout'
+  | 'invalid-move'
+  | 'draw-repetition'
+  | 'draw-insufficient'
+  | 'draw-50-move'
+  | 'forfeit'
+  | 'time-advantage';
+
+export interface MatchResult {
+  winner: BotInfo;
+  loser: BotInfo;
+  reason: GameWinReason;
+}
+
 export interface TournamentMatch {
   id: string;
   roundIndex: number;
   matchIndex: number;
   whiteBot: BotInfo | null;
   blackBot: BotInfo | null;
+  gameResults: MatchResult[]; // Array of game results in this match (for best-of-3)
   winner: BotInfo | null;
   loser: BotInfo | null;
   status: TournamentMatchStatus;
@@ -77,6 +91,14 @@ export interface TournamentRound {
   matches: TournamentMatch[];
 }
 
+/** Viewer data for brackets-viewer (double elimination) */
+export interface BracketsViewerData {
+  stages: unknown[];
+  matches: unknown[];
+  matchGames: unknown[];
+  participants: unknown[];
+}
+
 export interface TournamentState {
   status: TournamentStatus;
   rounds: TournamentRound[];
@@ -84,6 +106,15 @@ export interface TournamentState {
   champion: BotInfo | null;
   runnerUp: BotInfo | null;
   thirdPlace: BotInfo | null;
+  fourthPlace: BotInfo | null;
+  headToHead: Record<string, { wins: number; losses: number }>; // Key: "botA-vs-botB" (sorted)
+  tournamentTimeLimitMs: number; // Max time per bot per move in tournament
+  /** Brackets-viewer data (when using double elimination) */
+  bracketsViewerData?: BracketsViewerData | null;
+  /** Current match participants for "Now playing" display */
+  currentMatchBots?: { white: BotInfo; black: BotInfo } | null;
+  /** Log of match results (one line per game): white vs black, winner, reason */
+  matchLog?: { white: string; black: string; winner: string; reason: string }[];
 }
 
 // Messages from main thread -> worker

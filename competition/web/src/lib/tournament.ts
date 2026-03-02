@@ -36,6 +36,7 @@ export function buildRound(
       matchIndex: i / 2,
       whiteBot,
       blackBot,
+      gameResults: [],
       status: hasBye ? 'bye' : 'pending',
       winner: hasBye ? whiteBot : null,
       loser: null,

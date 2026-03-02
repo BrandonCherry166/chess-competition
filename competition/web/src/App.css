@@ -408,11 +408,49 @@ body {
   margin-bottom: 12px;
 }
 
+.tournament-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.tournament-controls label {
+  font-weight: 500;
+  min-width: 120px;
+  color: var(--text-primary);
+}
+
+.tournament-controls input[type="range"] {
+  flex: 1;
+  min-width: 150px;
+  cursor: pointer;
+}
+
+.tournament-controls input[type="range"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tournament-controls .delay-value {
+  font-family: monospace;
+  min-width: 60px;
+  text-align: right;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--accent);
+}
+
 .tournament-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
+  flex-direction: column;
 }
 
 .btn-secondary {
@@ -480,7 +518,19 @@ body {
 .match-player {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 0.9em;
+  gap: 8px;
+}
+
+.player-record {
+  font-size: 0.8em;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  font-family: monospace;
+  font-weight: 500;
 }
 
 .match-player.winner {
@@ -495,6 +545,55 @@ body {
 .match-status {
   font-size: 0.75em;
   color: var(--text-secondary);
+}
+
+.match-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75em;
+  margin-top: 4px;
+}
+
+.game-result {
+  color: var(--text-secondary);
+  padding: 3px 6px;
+  background-color: rgba(102, 187, 106, 0.1);
+  border-left: 2px solid var(--success);
+  border-radius: 3px;
+}
+
+.game-left .match-log-panel {
+  margin-top: 16px;
+}
+
+.match-log-panel {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.match-log-panel h3 {
+  font-size: 1em;
+  margin-bottom: 10px;
+  color: var(--accent);
+}
+
+.match-log-list {
+  list-style: none;
+  font-size: 0.9em;
+  font-family: 'Courier New', monospace;
+}
+
+.match-log-line {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.match-log-line:last-child {
+  border-bottom: none;
 }
 
 .tournament-results {

@@ -4,6 +4,8 @@ import type {
   PlayerInfo,
   GameState,
   GameResult,
+  GameWinReason,
+  MatchResult,
   TournamentState,
 } from './lib/types';
 import { GameEngine } from './lib/game-engine';
@@ -12,7 +14,7 @@ import { GameBoard } from './components/GameBoard';
 import { MoveHistory } from './components/MoveHistory';
 import { GameControls } from './components/GameControls';
 import { TournamentBracket } from './components/TournamentBracket';
-import { buildRound, shuffleBots } from './lib/tournament';
+import { createBracketsTournament, getCurrentMatches, updateMatchResult } from './lib/brackets-tournament';
 import './App.css';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -38,6 +40,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [moveDelay, setMoveDelay] = useState(500);
   const [timeLimitMs, setTimeLimitMs] = useState(10000);
+  const [tournamentTimeLimitMs, setTournamentTimeLimitMs] = useState(10000);
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const [tournamentRunning, setTournamentRunning] = useState(false);
   const engineRef = useRef<GameEngine | null>(null);
@@ -79,17 +82,73 @@ function App() {
 
   const getWinnerColor = (result: GameResult): 'w' | 'b' | null => {
     if (!result) return null;
-    if (result.startsWith('white-')) return 'w';
-    if (result.startsWith('black-')) return 'b';
+    if (result.type === 'checkmate') return result.winner;
+    if (result.type === 'forfeit') return result.loser === 'w' ? 'b' : 'w';
     return null;
   };
 
-  const playBotMatch = async (whiteBot: BotInfo, blackBot: BotInfo) => {
+  const getMoveTimeTotals = (moves: GameState['moves']): { white: number; black: number } => {
+    return moves.reduce(
+      (acc, move) => {
+        if (move.color === 'w') {
+          acc.white += move.timeMs;
+        } else {
+          acc.black += move.timeMs;
+        }
+        return acc;
+      },
+      { white: 0, black: 0 },
+    );
+  };
+
+  const formatReason = (reason: string): string => {
+    const map: Record<string, string> = {
+      checkmate: 'checkmate',
+      stalemate: 'stalemate',
+      timeout: 'timeout',
+      'invalid-move': 'invalid move',
+      'draw-repetition': 'draw (repetition)',
+      'draw-insufficient': 'draw (insufficient material)',
+      'draw-50-move': 'draw (50-move rule)',
+      forfeit: 'forfeit',
+      'time-advantage': 'time advantage',
+    };
+    return map[reason] ?? reason;
+  };
+
+  const getGameWinReason = (result: GameResult): GameWinReason => {
+    if (!result) return 'draw-50-move';
+    if (result.type === 'checkmate') return 'checkmate';
+    if (result.type === 'stalemate') return 'stalemate';
+    if (result.type === 'draw-repetition') return 'draw-repetition';
+    if (result.type === 'draw-insufficient') return 'draw-insufficient';
+    if (result.type === 'draw-50-move') return 'draw-50-move';
+    if (result.type === 'forfeit') {
+      return result.reason === 'timeout' ? 'timeout' : 'invalid-move';
+    }
+    return 'draw-50-move';
+  };
+
+  const playBotMatch = async (
+    whiteBot: BotInfo,
+    blackBot: BotInfo,
+    tournamentTimeLimitMs: number = timeLimitMs,
+  ): Promise<{
+    winner: BotInfo;
+    loser: BotInfo;
+    gameResults: MatchResult[];
+    matchTotalTimeMs: Record<string, number>;
+  }> => {
     if (!engineRef.current) {
       throw new Error('Game engine not ready');
     }
 
-    while (true) {
+    const originalTimeLimit = engineRef.current.getTimeLimit();
+    engineRef.current.setTimeLimit(tournamentTimeLimitMs);
+
+    const matchTotalTimeMs: Record<string, number> = { [whiteBot.username]: 0, [blackBot.username]: 0 };
+
+    try {
       setWhitePlayer({ type: 'bot', bot: whiteBot });
       setBlackPlayer({ type: 'bot', bot: blackBot });
       await engineRef.current.loadPlayers(
@@ -103,15 +162,47 @@ function App() {
         throw new Error('Match aborted');
       }
 
+      const totals = getMoveTimeTotals(state.moves);
+      matchTotalTimeMs[whiteBot.username] += totals.white;
+      matchTotalTimeMs[blackBot.username] += totals.black;
+
       const winnerColor = getWinnerColor(state.result);
-      if (!winnerColor) {
-        // Draw: rematch with same colors
-        continue;
+      const reason = getGameWinReason(state.result);
+      const isDraw =
+        !!state.result &&
+        (state.result.type === 'stalemate' ||
+          state.result.type === 'draw-repetition' ||
+          state.result.type === 'draw-insufficient' ||
+          state.result.type === 'draw-50-move');
+
+      if (isDraw) {
+        const totalsDraw = getMoveTimeTotals(state.moves);
+        const winner = totalsDraw.white <= totalsDraw.black ? whiteBot : blackBot;
+        const loser = winner === whiteBot ? blackBot : whiteBot;
+        return {
+          winner,
+          loser,
+          gameResults: [{ winner, loser, reason: 'time-advantage' }],
+          matchTotalTimeMs,
+        };
       }
 
-      const winner = winnerColor === 'w' ? whiteBot : blackBot;
-      const loser = winnerColor === 'w' ? blackBot : whiteBot;
-      return { winner, loser, result: state.result };
+      if (winnerColor === 'w') {
+        return {
+          winner: whiteBot,
+          loser: blackBot,
+          gameResults: [{ winner: whiteBot, loser: blackBot, reason }],
+          matchTotalTimeMs,
+        };
+      }
+      return {
+        winner: blackBot,
+        loser: whiteBot,
+        gameResults: [{ winner: blackBot, loser: whiteBot, reason }],
+        matchTotalTimeMs,
+      };
+    } finally {
+      engineRef.current.setTimeLimit(originalTimeLimit);
     }
   };
 
@@ -120,162 +211,124 @@ function App() {
     setError(null);
     setTournamentRunning(true);
     try {
-      const shuffled = shuffleBots(bots);
-      const totalRounds = Math.ceil(Math.log2(shuffled.length));
-      let rounds = [buildRound(shuffled, 0, totalRounds)];
-      let tournamentState: TournamentState = {
+      const ctx = await createBracketsTournament(bots);
+      const { manager, storage, stageId, participantMap } = ctx;
+
+      const trackHeadToHead = (h2h: Record<string, { wins: number; losses: number }>, winner: BotInfo, loser: BotInfo) => {
+        const names = [winner.username, loser.username].sort();
+        const key = names.join('-vs-');
+        if (!h2h[key]) h2h[key] = { wins: 0, losses: 0 };
+        if (winner.username === names[0]) h2h[key].wins++;
+        else h2h[key].losses++;
+      };
+
+      let headToHead: Record<string, { wins: number; losses: number }> = {};
+      const baseState: TournamentState = {
         status: 'running',
-        rounds,
+        rounds: [],
         currentMatchId: null,
         champion: null,
         runnerUp: null,
         thirdPlace: null,
+        fourthPlace: null,
+        headToHead: {},
+        tournamentTimeLimitMs: tournamentTimeLimitMs,
+        matchLog: [],
       };
 
-      const commitTournament = () => {
-        setTournament({
-          ...tournamentState,
-          rounds: tournamentState.rounds.map((round) => ({
-            ...round,
-            matches: round.matches.map((match) => ({ ...match })),
-          })),
-        });
-      };
+      const refreshViewerData = () =>
+        manager.get.tournamentData(ctx.tournamentId).then((data) => ({
+          stages: data.stage,
+          matches: data.match,
+          matchGames: data.match_game,
+          participants: data.participant,
+        }));
 
-      commitTournament();
+      baseState.bracketsViewerData = await refreshViewerData();
+      setTournament({ ...baseState, bracketsViewerData: baseState.bracketsViewerData });
 
-      const updateMatch = (
-        roundIndex: number,
-        matchIndex: number,
-        patch: Partial<TournamentState['rounds'][number]['matches'][number]>,
-      ) => {
-        const updatedRounds = tournamentState.rounds.map((round, rIndex) => {
-          if (rIndex !== roundIndex) return round;
-          return {
-            ...round,
-            matches: round.matches.map((match, mIndex) => {
-              if (mIndex !== matchIndex) return match;
-              return { ...match, ...patch };
-            }),
-          };
-        });
-        tournamentState = { ...tournamentState, rounds: updatedRounds };
-        commitTournament();
-      };
+      while (true) {
+        const currentMatches = await getCurrentMatches(storage, stageId);
+        const match = currentMatches.find(
+          (m) => m.opponent1?.id != null && m.opponent2?.id != null && participantMap.has(m.opponent1!.id!) && participantMap.has(m.opponent2!.id!),
+        ) as { id: number; opponent1?: { id: number | null }; opponent2?: { id: number | null } } | undefined;
+        if (!match) break;
 
-      let semifinalLosers: BotInfo[] = [];
-      let champion: BotInfo | null = null;
-      let runnerUp: BotInfo | null = null;
-      let thirdPlace: BotInfo | null = null;
+        const matchId = match.id;
+        const pid1 = match.opponent1!.id!;
+        const pid2 = match.opponent2!.id!;
+        const whiteBot = participantMap.get(pid1)!;
+        const blackBot = participantMap.get(pid2)!;
 
-      let roundIndex = 0;
-      while (roundIndex < tournamentState.rounds.length) {
-        const currentRound = tournamentState.rounds[roundIndex];
-        const winners: BotInfo[] = [];
+        setTournament((prev) => (prev ? { ...prev, currentMatchBots: { white: whiteBot, black: blackBot } } : prev));
+        await new Promise((r) => setTimeout(r, 0));
 
-        for (let matchIndex = 0; matchIndex < currentRound.matches.length; matchIndex += 1) {
-          const match = currentRound.matches[matchIndex];
-          const whiteBot = match.whiteBot;
-          const blackBot = match.blackBot;
-
-          if (whiteBot && !blackBot) {
-            updateMatch(roundIndex, matchIndex, {
-              status: 'bye',
-              winner: whiteBot,
-              loser: null,
-            });
-            winners.push(whiteBot);
-            continue;
-          }
-
-          if (!whiteBot || !blackBot) {
-            continue;
-          }
-
-          tournamentState = { ...tournamentState, currentMatchId: match.id };
-          commitTournament();
-          updateMatch(roundIndex, matchIndex, { status: 'running' });
-
-          const result = await playBotMatch(whiteBot, blackBot);
-          updateMatch(roundIndex, matchIndex, {
-            status: 'finished',
-            winner: result.winner,
-            loser: result.loser,
+        const result = await playBotMatch(whiteBot, blackBot, tournamentTimeLimitMs);
+        for (const gr of result.gameResults) {
+          baseState.matchLog!.push({
+            white: whiteBot.username,
+            black: blackBot.username,
+            winner: gr.winner.username,
+            reason: gr.reason,
           });
+        }
+        setTournament((prev) => (prev ? { ...prev, matchLog: baseState.matchLog } : prev));
 
-          winners.push(result.winner);
+        trackHeadToHead(headToHead, result.winner, result.loser);
 
-          if (currentRound.title === 'Semifinals') {
-            semifinalLosers.push(result.loser);
-          }
+        let winnerScore = result.gameResults.filter((r) => r.winner.username === result.winner.username).length;
+        let loserScore = result.gameResults.length - winnerScore;
+        let matchWinner = result.winner;
+        let matchLoser = result.loser;
 
-          if (currentRound.title === 'Final') {
-            champion = result.winner;
-            runnerUp = result.loser;
-          }
+        if (winnerScore === loserScore) {
+          const timeW = result.matchTotalTimeMs[whiteBot.username] ?? 0;
+          const timeB = result.matchTotalTimeMs[blackBot.username] ?? 0;
+          matchWinner = timeW <= timeB ? whiteBot : blackBot;
+          matchLoser = matchWinner === whiteBot ? blackBot : whiteBot;
+          winnerScore = 2;
+          loserScore = 1;
         }
 
-        if (winners.length <= 1) {
-          champion = champion ?? winners[0] ?? null;
-          break;
-        }
+        await updateMatchResult(
+          manager,
+          matchId,
+          match,
+          ctx.botToParticipantId.get(matchWinner.username)!,
+          ctx.botToParticipantId.get(matchLoser.username)!,
+          winnerScore,
+          loserScore,
+        );
 
-        const nextRound = buildRound(winners, roundIndex + 1, totalRounds);
-        tournamentState = {
-          ...tournamentState,
-          rounds: [...tournamentState.rounds, nextRound],
-        };
-        commitTournament();
-
-        roundIndex += 1;
+        baseState.bracketsViewerData = await refreshViewerData();
+        setTournament((prev) => (prev ? { ...prev, bracketsViewerData: baseState.bracketsViewerData, currentMatchBots: null } : prev));
       }
 
-      if (semifinalLosers.length === 2) {
-        const thirdPlaceRound = {
-          title: 'Third Place',
-          matches: [
-            {
-              id: 'third-place',
-              roundIndex: totalRounds,
-              matchIndex: 0,
-              whiteBot: semifinalLosers[0],
-              blackBot: semifinalLosers[1],
-              status: 'pending' as const,
-              winner: null,
-              loser: null,
-            },
-          ],
-        };
+      const standings = await manager.get.finalStandings(stageId);
+      const idToBot = (id: number) => participantMap.get(id) ?? null;
+      const champion = standings[0] ? idToBot((standings[0] as { id: number }).id) : null;
+      const runnerUp = standings[1] ? idToBot((standings[1] as { id: number }).id) : null;
+      const thirdPlace = standings[2] ? idToBot((standings[2] as { id: number }).id) : null;
+      const fourthPlace = standings[3] ? idToBot((standings[3] as { id: number }).id) : null;
 
-        tournamentState = {
-          ...tournamentState,
-          rounds: [...tournamentState.rounds, thirdPlaceRound],
-        };
-        commitTournament();
-
-        const result = await playBotMatch(semifinalLosers[0], semifinalLosers[1]);
-        thirdPlace = result.winner;
-
-        updateMatch(tournamentState.rounds.length - 1, 0, {
-          status: 'finished',
-          winner: result.winner,
-          loser: result.loser,
-        });
-      }
-
-      tournamentState = {
-        ...tournamentState,
+      baseState.bracketsViewerData = await refreshViewerData();
+      setTournament({
+        ...baseState,
+        bracketsViewerData: baseState.bracketsViewerData,
         status: 'finished',
-        champion: champion ?? null,
-        runnerUp: runnerUp ?? null,
-        thirdPlace: thirdPlace ?? null,
+        champion,
+        runnerUp,
+        thirdPlace,
+        fourthPlace,
+        headToHead,
+        matchLog: baseState.matchLog,
         currentMatchId: null,
-      };
-      setTournament(tournamentState);
-      setTournamentRunning(false);
+        currentMatchBots: null,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Tournament failed: ${msg}`);
+    } finally {
       setTournamentRunning(false);
     }
   };
@@ -326,11 +379,7 @@ function App() {
 
   const gameActive = gameState.status !== 'idle' || loading;
   const tournamentActive = tournamentRunning || tournament?.status === 'running';
-  const currentMatch = tournament?.currentMatchId
-    ? tournament.rounds
-      .flatMap((round) => round.matches)
-      .find((match) => match.id === tournament.currentMatchId) ?? null
-    : null;
+  const currentMatchBots = tournament?.currentMatchBots ?? null;
 
   // Determine board orientation: if a human is playing black (and white is a bot), flip the board
   const boardOrientation: 'white' | 'black' =
@@ -361,10 +410,39 @@ function App() {
       <div className="tournament-panel">
         <h2>Bot Tournament</h2>
         <p className="tournament-subtitle">
-          Single-elimination, randomized bracket. Draws rematch until decisive.
+          Double-elimination, randomized bracket. Losers drop to loser bracket;
+          champion must lose twice to be eliminated. Best-of-3 series per match.
           Uses the bot time limit above.
         </p>
         <div className="tournament-actions">
+          <div className="tournament-controls">
+            <label htmlFor="tournament-move-delay">Move Delay (ms):</label>
+            <input
+              id="tournament-move-delay"
+              type="range"
+              min="0"
+              max="5000"
+              step="100"
+              value={moveDelay}
+              onChange={(e) => setMoveDelay(parseInt(e.target.value, 10))}
+              disabled={tournamentRunning}
+            />
+            <span className="delay-value">{moveDelay}ms</span>
+          </div>
+          <div className="tournament-controls">
+            <label htmlFor="tournament-time-limit">Bot Time Limit (ms):</label>
+            <input
+              id="tournament-time-limit"
+              type="range"
+              min="1000"
+              max="60000"
+              step="1000"
+              value={tournamentTimeLimitMs}
+              onChange={(e) => setTournamentTimeLimitMs(parseInt(e.target.value, 10))}
+              disabled={tournamentRunning}
+            />
+            <span className="delay-value">{tournamentTimeLimitMs}ms</span>
+          </div>
           <button
             className="btn-start"
             onClick={handleStartTournament}
@@ -381,9 +459,9 @@ function App() {
           </button>
         </div>
 
-        {currentMatch && (
+        {currentMatchBots && (
           <div className="tournament-status">
-            Now playing: {currentMatch.whiteBot?.username} vs {currentMatch.blackBot?.username}
+            Now playing: {currentMatchBots.white.username} vs {currentMatchBots.black.username}
           </div>
         )}
 
@@ -398,6 +476,18 @@ function App() {
               onHumanMove={handleHumanMove}
               boardOrientation={boardOrientation}
             />
+            {tournament?.matchLog && tournament.matchLog.length > 0 && (
+              <div className="match-log-panel">
+                <h3>Match results</h3>
+                <ul className="match-log-list">
+                  {tournament.matchLog.map((entry, i) => (
+                    <li key={i} className="match-log-line">
+                      {entry.white} vs {entry.black}: {entry.winner} won ({formatReason(entry.reason)})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <div className="game-right">
             {!tournamentActive ? (
@@ -415,7 +505,7 @@ function App() {
                 Tournament in progress — matches are played automatically.
               </div>
             )}
-            <MoveHistory moves={gameState.moves} />
+            <MoveHistory moves={gameState.moves} currentFen={gameState.fen} />
           </div>
         </div>
       )}
