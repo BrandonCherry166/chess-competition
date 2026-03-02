@@ -26,6 +26,8 @@ int PIECE_VALUES[6] = {
   999999 //King
 };
 
+const int ATTACK_WEIGHT[] = {0, 0, 50, 75, 88, 94, 97, 99, 99};
+
 //Piece Square Tables
 
 int PAWN_PST[64] = {
@@ -156,6 +158,31 @@ int moveScore(chess::Board& board, const chess::Move& move) { //MVV / LVA
 
   return victim - attacker;
 }
+
+int evaluatePawnShield(const chess::Board& board, chess::Color side) {
+  chess::Square kingSq = board.kingSq(side);
+  int kingFile = kingSq.file();
+  int score = 0;
+
+  for (int f = std::max(0, kingFile -1); f <= std::min(7, kingFile + 1); f++) {
+    int shieldRank =  (side == chess::Color::WHITE) ? kingSq.rank() + 1: kingSq.rank() - 1;
+    chess::Rank trueRank = shieldRank;
+    chess::File trueFile = f;
+
+    chess::Square sq = chess::Square(trueRank, trueFile);
+
+    if (board.at(sq).type() == chess::PieceType::PAWN && board.at(sq).color() == side) {
+      score += 10;
+    }
+    else {
+      score -= 15;
+    }
+  }
+  return score;
+}
+
+
+
 
 static int Evaluate(chess::Board& board) {
   int score = 0;
