@@ -122,7 +122,7 @@ inline int pstIndex(chess::Square sq, chess::Color color)
   }
 }
 
-inline const int* pstForPiece(chess::PieceType pt)
+inline const int* pstForPiece(chess::PieceType pt, bool endGame)
 {
   switch (pt.internal())
   {
@@ -141,9 +141,8 @@ inline const int* pstForPiece(chess::PieceType pt)
   case chess::PieceType::underlying::QUEEN:
     return QUEEN_PST;
 
-  case chess::PieceType::underlying::KING:
-    return KING_MIDDLEGAME_PST;
-
+    case chess::PieceType::underlying::KING:
+    return endGame ? KING_ENDGAME_PST : KING_MIDDLEGAME_PST;
   }
 
 }
@@ -158,6 +157,21 @@ int moveScore(chess::Board& board, const chess::Move& move) { //MVV / LVA
 
   return victim - attacker;
 }
+
+int totalPieces(const chess::Board& board) {
+  int total = 0;
+
+  for (int sq = 0; sq < 64; sq++) {
+    chess::Piece piece = board.at(chess::Square(sq));
+    if (piece == chess::Piece::NONE || piece.type() == chess::PieceType::KING) {
+      continue;
+    }
+    total += PIECE_VALUES[(int)piece.type().internal()];
+  }
+  return total;
+}
+
+constexpr int ENDGAME_THRESHOLD = 2000;
 
 int evaluatePawnShield(const chess::Board& board, chess::Color side) {
   chess::Square kingSq = board.kingSq(side);
@@ -186,11 +200,9 @@ int evaluateMobility(const chess::Board& board) {
   
 }
 
-
-
 static int Evaluate(chess::Board& board) {
   int score = 0;
-
+  bool endgame = totalPieces(board) < ENDGAME_THRESHOLD;
   for (int sq = 0; sq < 64; sq++)
   {
     chess::Square square(sq);
@@ -206,7 +218,7 @@ static int Evaluate(chess::Board& board) {
 
     int material = PIECE_VALUES[static_cast<int>(pieceType)];
     int pst = 0;
-    const int* table = pstForPiece(pieceType);
+    const int* table = pstForPiece(pieceType, endgame);
 
     if (table)
     {
@@ -216,7 +228,19 @@ static int Evaluate(chess::Board& board) {
     int pieceScore = material + pst;
     score += color == chess::Color::WHITE ? pieceScore : -pieceScore;
   }
-  return board.sideToMove() == chess::Color::WHITE ? score : -score;
+
+  if (!endgame) {
+    score += evaluatePawnShield(board, chess::Color::WHITE);
+    score -= evaluatePawnShield(board, chess::Color::BLACK);
+  }
+
+  //Mobility
+ // chess::Movelist moves;
+ // chess::movegen::legalmoves(moves, board);
+
+  //int mobilityScore = moves.size() * 2;
+  //score += (board.sideToMove() == chess::Color::WHITE) ? mobilityScore : -mobilityScore;
+  //return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
 
 int quiescence(chess::Board& board, int alpha, int beta) {
