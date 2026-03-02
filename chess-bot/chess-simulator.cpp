@@ -452,7 +452,7 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
     return "";
 
   auto start = std::chrono::steady_clock::now();
-  searchDeadline = start + std::chrono::milliseconds( (long long) (timeLimitMs * 0.1));
+  searchDeadline = start + std::chrono::milliseconds( (long long) (timeLimitMs * 0.8));
   nodeCount = 0;
   timeUp = false;
 
