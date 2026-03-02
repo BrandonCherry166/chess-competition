@@ -195,6 +195,112 @@ int evaluatePawnShield(const chess::Board& board, chess::Color side) {
   return score;
 }
 
+int openFilesNearKing(const chess::Board& board, chess::Color side)
+{
+  chess::Square kingSquare = board.kingSq(side);
+  int kingFile = kingSquare.file();
+  int penalty = 0;
+
+  for (int f = std::max(0, kingFile - 1); f <= std::min(7, kingFile + 1); f++)
+  {
+    bool hasGoodPawn = false;
+    bool hasBadPawn = false;
+
+    for (int r = 0; r < 8; r++)
+    {
+      chess::Piece piece = board.at(chess::Square(r * 8 + f));
+      if (piece == chess::Piece::NONE)
+      {
+        continue;
+      }
+      if (piece.type() != chess::PieceType::PAWN)
+      {
+        continue;
+      }
+      if (piece.color() == side)
+      {
+        hasGoodPawn = true;
+      }
+      else
+      {
+        hasBadPawn = true;
+      }
+    }
+    if (!hasGoodPawn && !hasBadPawn)
+    {
+      penalty -= 25;
+    }
+    else if (!hasGoodPawn)
+    {
+      penalty -= 10;
+    }
+  }
+  return penalty;
+}
+
+int enemySquaresNearKing(const chess::Board& board, chess::Color side)
+{
+  chess::Square kingSquare = board.kingSq(side);
+  int kingFile = kingSquare.file();
+  int kingRank = kingSquare.rank();
+
+  chess::Color enemy = (side == chess::Color::WHITE) ? chess::Color::BLACK : chess::Color::WHITE;
+  int penalty = 0;
+
+  for (int df = -2; df <= 2; df++)
+  {
+    for (int dr = -2; dr <= 2; dr++)
+    {
+      int f = kingFile + df;
+      int r = kingRank + dr;
+
+      if (f < 0 || f > 7 || r < 0 || r > 7)
+      {
+        continue;
+      }
+
+      chess::Piece piece = board.at(chess::Square(r * 8 + f));
+      if (piece == chess::Piece::NONE)
+      {
+        continue;
+      }
+      if (piece.color() != enemy)
+      {
+        continue;
+      }
+
+      int distance = std::max(std::abs(df), std::abs(dr));
+      switch (piece.type().internal())
+      {
+      case chess::PieceType::underlying::QUEEN: penalty -= (distance == 1) ? 40 : 20; break;
+      case chess::PieceType::underlying::ROOK: penalty -= (distance == 1) ? 25 : 10; break;
+      case chess::PieceType::underlying::BISHOP: penalty -= (distance == 1) ? 15 : 5; break;
+      case chess::PieceType::underlying::KNIGHT: penalty -= (distance == 1) ? 15 : 5; break;
+      default: break;
+      }
+    }
+  }
+  return penalty;
+}
+
+int kingPositionSafety(const chess::Board& board, chess::Color side)
+{
+  chess::Square kingSquare = board.kingSq(side);
+  int kingFile = kingSquare.file();
+
+  if (kingFile <= 2 || kingFile >= 5)
+  {
+    return 20;
+  }
+
+  if (kingFile == 3 || kingFile == 4)
+  {
+    return -30;
+  }
+
+  return 0;
+}
+
 int evaluateMobility(const chess::Board& board) {
   int score = 0;
   
@@ -232,15 +338,18 @@ static int Evaluate(chess::Board& board) {
   if (!endgame) {
     score += evaluatePawnShield(board, chess::Color::WHITE);
     score -= evaluatePawnShield(board, chess::Color::BLACK);
+
+    score += openFilesNearKing(board, chess::Color::WHITE);
+    score -= openFilesNearKing(board, chess::Color::BLACK);
+
+    score += enemySquaresNearKing(board, chess::Color::WHITE);
+    score -= enemySquaresNearKing(board, chess::Color::BLACK);
+
+    score += kingPositionSafety(board, chess::Color::WHITE);
+    score -= kingPositionSafety(board, chess::Color::BLACK);
   }
 
-  //Mobility
- // chess::Movelist moves;
- // chess::movegen::legalmoves(moves, board);
-
-  //int mobilityScore = moves.size() * 2;
-  //score += (board.sideToMove() == chess::Color::WHITE) ? mobilityScore : -mobilityScore;
-  //return board.sideToMove() == chess::Color::WHITE ? score : -score;
+  return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
 
 int quiescence(chess::Board& board, int alpha, int beta) {
@@ -343,7 +452,7 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
     return "";
 
   auto start = std::chrono::steady_clock::now();
-  searchDeadline = start + std::chrono::milliseconds( (long long) (timeLimitMs * 0.8));
+  searchDeadline = start + std::chrono::milliseconds( (long long) (timeLimitMs * 0.1));
   nodeCount = 0;
   timeUp = false;
 
