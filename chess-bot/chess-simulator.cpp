@@ -6,10 +6,12 @@
 #include <chrono>
 #include <fstream>
 
-//std::vector<std::string> gameMoves;
+std::vector<std::string> gameMoves;
 
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
+
+bool writeToPGN = true;
 
 auto searchDeadline = std::chrono::steady_clock::now();
 static int nodeCount = 0;
@@ -27,6 +29,15 @@ int PIECE_VALUES[6] = {
 };
 
 const int ATTACK_WEIGHT[] = {0, 0, 50, 75, 88, 94, 97, 99, 99};
+
+const int MOBILITY_WEIGHT[6] = {
+0, //Pawn
+4, //Knight
+3, //Bishop
+2, //Rook
+1, //Queen
+0 //King
+  };
 
 //Piece Square Tables
 
@@ -171,6 +182,28 @@ int totalPieces(const chess::Board& board) {
   return total;
 }
 
+int countMobility(const chess::Board& board, chess::Color side, chess::PieceType pieceType) {
+  int count = 0;
+  chess::Bitboard pieces = board.pieces(pieceType, side);
+
+  while (pieces) {
+    int sqIndex = pieces.lsb();
+    chess::Square sq(sqIndex);
+    pieces.pop();
+
+    chess::Bitboard attacks;
+    switch (pieceType.internal()) {
+      case chess::PieceType::underlying::KNIGHT: attacks = chess::attacks::knight(sq); break;
+      case chess::PieceType::underlying::BISHOP: attacks = chess::attacks::bishop(sq, board.occ()); break;
+      case chess::PieceType::underlying::ROOK:   attacks = chess::attacks::rook(sq, board.occ()); break;
+      case chess::PieceType::underlying::QUEEN:  attacks = chess::attacks::queen(sq, board.occ()); break;
+      default: attacks = chess::Bitboard(0); break;
+    }
+    attacks &= ~board.us(side);
+    count += attacks.count();
+  }
+  return count;
+}
 constexpr int ENDGAME_THRESHOLD = 2000;
 
 int evaluatePawnShield(const chess::Board& board, chess::Color side) {
@@ -301,9 +334,25 @@ int kingPositionSafety(const chess::Board& board, chess::Color side)
   return 0;
 }
 
+const chess::PieceType PIECE_TYPES[] = { //Just to make it easy to loop through
+  chess::PieceType::KNIGHT,
+  chess::PieceType::BISHOP,
+  chess::PieceType::ROOK,
+  chess::PieceType::QUEEN
+};
+
+
 int evaluateMobility(const chess::Board& board) {
   int score = 0;
-  
+
+  for (int p = 0; p <= 4; p++) {
+    chess::PieceType pt = PIECE_TYPES[p];
+    int weight = MOBILITY_WEIGHT[p+1];
+
+    score += countMobility(board, chess::Color::WHITE, pt) * weight;
+    score -= countMobility(board, chess::Color::BLACK, pt) * weight;
+  }
+  return score;
 }
 
 static int Evaluate(chess::Board& board) {
@@ -349,6 +398,7 @@ static int Evaluate(chess::Board& board) {
     score -= kingPositionSafety(board, chess::Color::BLACK);
   }
 
+  score += evaluateMobility(board);
   return board.sideToMove() == chess::Color::WHITE ? score : -score;
 }
 
@@ -484,15 +534,19 @@ std::string ChessSimulator::Move(std::string fen, int timeLimitMs) {
   }
   done:
   std::string result = chess::uci::moveToUci(bestMove);
- //gameMoves.push_back(result);
 
-  //Write PGN
-  //std::ofstream pgn("game.pgn");
-  //for (int i = 0; i < gameMoves.size(); i++) {
-   // if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
-   //pgn << gameMoves[i] << " ";
-  //}
-  //pgn.close();
+  if (writeToPGN) {
+    gameMoves.push_back(result);
+
+    //Write PGN
+    std::ofstream pgn("game.pgn");
+    for (int i = 0; i < gameMoves.size(); i++) {
+      if (i % 2 == 0) pgn << (i/2 + 1) << ". ";
+      pgn << gameMoves[i] << " ";
+    }
+    pgn.close();
+  }
+
   return result;
 }
 
