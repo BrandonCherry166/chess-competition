@@ -11,7 +11,7 @@ std::vector<std::string> gameMoves;
 constexpr int INF = 1e9;
 constexpr int MATE = 9000;
 
-bool writeToPGN = true;
+bool writeToPGN = false;
 
 auto searchDeadline = std::chrono::steady_clock::now();
 static int nodeCount = 0;
